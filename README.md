@@ -79,7 +79,7 @@ flowchart LR
    not `127.0.0.1` or the `docker0` address.
 
 3. (Recommended) Use a normal, non-root user account for `username` in the
-   app — the one you already log in with.
+   app — the one you already logged in with.
 
 4. (Optional but recommended) Set up key-based login instead of a password:
 
