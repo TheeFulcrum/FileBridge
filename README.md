@@ -8,7 +8,7 @@ No cloud, no accounts, no commercial backend: your phone talks directly to
 your Ubuntu machine's OpenSSH server over your local network (or over the
 internet if you port-forward/VPN, entirely up to you).
 
-- Mobile app: Flutter (`~/Videos/FileBridge`), builds for Android now, and for
+- Mobile app: Flutter (`FileBridge`), builds for Android now, and for
   iOS once built on a Mac with Xcode.
 - Transfer engine: [`dartssh2`](https://pub.dev/packages/dartssh2) — a pure
   Dart SSH2/SFTP client, so there's no native library to compile for either
@@ -129,7 +129,7 @@ never plain text on disk.
 ### Get dependencies
 
 ```bash
-cd ~/Videos/FileBridge
+cd path/to/FileBridge
 flutter pub get
 ```
 
