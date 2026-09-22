@@ -1,11 +1,11 @@
 # FileBridge
 
 A personal, self-hosted file-transfer app for moving files between your
-Android/iOS phone and your Ubuntu computer over real **SSH/SFTP** — the same
+Android/iOS phone and any **Linux distribution** (Ubuntu, Fedora, Debian, Arch, AlmaLinux, openSUSE, etc.) over real **SSH/SFTP** — the same
 protocol `scp`/`sftp`/FileZilla use, just wrapped in a native mobile UI.
 
 No cloud, no accounts, no commercial backend: your phone talks directly to
-your Ubuntu machine's OpenSSH server over your local network (or over the
+your Linux computer's OpenSSH server over your local network (or over the
 internet if you port-forward/VPN, entirely up to you).
 
 - Mobile app: Flutter (`FileBridge`), builds for Android now, and for
@@ -13,7 +13,7 @@ internet if you port-forward/VPN, entirely up to you).
 - Transfer engine: [`dartssh2`](https://pub.dev/packages/dartssh2) — a pure
   Dart SSH2/SFTP client, so there's no native library to compile for either
   platform.
-- Server: your existing Ubuntu machine's OpenSSH server. Nothing custom to
+- Server: your existing Linux machine's OpenSSH server. Nothing custom to
   deploy or maintain.
 
 ---
@@ -22,11 +22,11 @@ internet if you port-forward/VPN, entirely up to you).
 
 ```mermaid
 flowchart LR
-  A[Phone: FileBridge app] -- SFTP over SSH port 22 --> B[Ubuntu: openssh-server]
+  A[Phone: FileBridge app] -- SFTP over SSH port 22 --> B[Linux PC: openssh-server]
   B -- reads/writes --> C[Your files]
 ```
 
-1. You add a "server" profile in the app: your Ubuntu machine's IP/hostname,
+1. You add a "server" profile in the app: your Linux machine's IP/hostname,
    SSH port, username, and either a password or a private key.
 2. The app connects over SFTP and shows a remote file browser.
 3. You pick files on your phone to **upload**, or tap files on the server to
@@ -39,15 +39,34 @@ flowchart LR
 
 ---
 
-## 2. One-time setup on Ubuntu (the "server")
+## 2. One-time setup on Linux (the "server")
 
-1. Install and enable the SSH server:
+1. Install and enable the SSH server (command varies by distro):
 
+   - **Ubuntu / Debian / Linux Mint / Pop!_OS**:
+     ```bash
+     sudo apt update && sudo apt install openssh-server
+     sudo systemctl enable --now ssh
+     ```
+   - **Fedora / RHEL / CentOS / AlmaLinux / Rocky Linux**:
+     ```bash
+     sudo dnf install openssh-server
+     sudo systemctl enable --now sshd
+     ```
+   - **Arch Linux / Manjaro**:
+     ```bash
+     sudo pacman -S openssh
+     sudo systemctl enable --now sshd
+     ```
+   - **openSUSE**:
+     ```bash
+     sudo zypper install openssh
+     sudo systemctl enable --now sshd
+     ```
+
+   Check that it is running:
    ```bash
-   sudo apt update
-   sudo apt install openssh-server
-   sudo systemctl enable --now ssh
-   sudo systemctl status ssh   # should say "active (running)"
+   sudo systemctl status ssh || sudo systemctl status sshd
    ```
 
 2. Find the IP address you'll type into the app:
@@ -65,7 +84,7 @@ flowchart LR
 4. (Optional but recommended) Set up key-based login instead of a password:
 
    ```bash
-   # On your Ubuntu machine, generate a key pair if you don't have one:
+   # On your Linux machine, generate a key pair if you don't have one:
    ssh-keygen -t ed25519 -C "filebridge"
    # This creates ~/.ssh/id_ed25519 (private) and ~/.ssh/id_ed25519.pub (public).
 
@@ -82,10 +101,13 @@ flowchart LR
    > (e.g. `adb push`, a cable, or a temporary encrypted share) — never
    > email it or upload it anywhere public.
 
-5. If you only ever use FileBridge on your home Wi-Fi, no firewall/router
-   changes are needed. If you want to reach your Ubuntu machine from outside
-   your home network, set up a VPN (e.g. WireGuard/Tailscale) rather than
-   exposing port 22 directly to the internet.
+5. If you only ever use FileBridge on your home Wi-Fi, no firewall changes are
+   needed unless your distro enables a strict firewall (like `firewalld` or `ufw`):
+   - **ufw** (Ubuntu/Debian): `sudo ufw allow 22/tcp`
+   - **firewalld** (Fedora/RHEL): `sudo firewall-cmd --add-service=ssh --permanent && sudo firewall-cmd --reload`
+
+   If you want to reach your Linux machine from outside your home network, set up a
+   VPN (e.g. WireGuard/Tailscale) rather than exposing port 22 directly to the internet.
 
 ---
 
