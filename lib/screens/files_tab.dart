@@ -84,21 +84,42 @@ class _FilesTabState extends State<FilesTab> {
   }
 
   Future<void> _download(RemoteEntry entry) async {
-    final dir = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
-    final downloads = Directory('${dir.path}/FileBridge');
-    if (!await downloads.exists()) await downloads.create(recursive: true);
-    final localPath = '${downloads.path}/${entry.name}';
-    widget.transferManager.enqueueDownload(
-      widget.ssh,
-      localPath: localPath,
-      remotePath: entry.path,
-      fileName: entry.name,
-      totalBytes: entry.size ?? 0,
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Downloading to ${downloads.path}')),
+    if (entry.isDirectory) {
+      _showError('Folder downloads are not supported yet. Select a file.');
+      return;
+    }
+    try {
+      Directory? dir;
+      try {
+        dir = await getApplicationDocumentsDirectory();
+      } catch (_) {
+        dir = await getExternalStorageDirectory();
+      }
+      if (dir == null) {
+        _showError('Could not access storage directory on device');
+        return;
+      }
+      final downloads = Directory('${dir.path}/FileBridge');
+      if (!await downloads.exists()) {
+        await downloads.create(recursive: true);
+      }
+      final localPath = '${downloads.path}/${entry.name}';
+      widget.transferManager.enqueueDownload(
+        widget.ssh,
+        localPath: localPath,
+        remotePath: entry.path,
+        fileName: entry.name,
+        totalBytes: entry.size ?? 0,
       );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Downloading ${entry.name} to ${downloads.path}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showError('Download error: $e');
+      }
     }
   }
 

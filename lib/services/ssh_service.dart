@@ -160,9 +160,24 @@ class SshService {
     var cancelled = false;
     try {
       sub = remote.read(onProgress: onProgress).listen(
-        (chunk) => sink.add(chunk),
-        onDone: () => completer.complete(),
-        onError: (Object e, StackTrace st) => completer.completeError(e, st),
+        (chunk) {
+          try {
+            sink.add(chunk);
+          } catch (e, st) {
+            if (!completer.isCompleted) completer.completeError(e, st);
+          }
+        },
+        onDone: () async {
+          try {
+            await sink.flush();
+            if (!completer.isCompleted) completer.complete();
+          } catch (e, st) {
+            if (!completer.isCompleted) completer.completeError(e, st);
+          }
+        },
+        onError: (Object e, StackTrace st) {
+          if (!completer.isCompleted) completer.completeError(e, st);
+        },
         cancelOnError: true,
       );
       onCancelBound(() {
@@ -172,10 +187,19 @@ class SshService {
       });
       await completer.future;
     } finally {
-      await sink.close();
-      await remote.close();
+      await sub?.cancel();
+      try {
+        await sink.close();
+      } catch (_) {}
+      try {
+        await remote.close();
+      } catch (_) {}
       if (cancelled) {
-        if (await localFile.exists()) await localFile.delete();
+        if (await localFile.exists()) {
+          try {
+            await localFile.delete();
+          } catch (_) {}
+        }
       }
     }
   }

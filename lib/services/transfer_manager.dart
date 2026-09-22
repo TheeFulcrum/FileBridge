@@ -95,9 +95,14 @@ class TransferManager extends ChangeNotifier {
     notifyListeners();
 
     try {
+      int lastNotify = 0;
       void onProgress(int transferred) {
         next.transferredBytes = transferred;
-        notifyListeners();
+        final now = DateTime.now().millisecondsSinceEpoch;
+        if (now - lastNotify > 100 || transferred == next.totalBytes) {
+          lastNotify = now;
+          notifyListeners();
+        }
       }
 
       void onCancelBound(void Function() cancel) => next.bindCancel(cancel);
