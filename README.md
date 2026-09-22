@@ -1,2 +1,2 @@
 # Filebridge
-SSh file sharing (laptop to phone vice-versa)
+SSH file sharing (laptop to phone vice-versa)
