@@ -18,6 +18,10 @@ class TransferManager extends ChangeNotifier {
 
   int get activeCount => _tasks.where((t) => t.isActive).length;
 
+  void _safeNotifyListeners() {
+    Future.microtask(() => notifyListeners());
+  }
+
   String enqueueUpload(
     SshService ssh, {
     required String localPath,
@@ -34,7 +38,7 @@ class TransferManager extends ChangeNotifier {
       totalBytes: totalBytes,
     );
     _tasks.insert(0, task);
-    notifyListeners();
+    _safeNotifyListeners();
     _runNext(ssh);
     return task.id;
   }
@@ -55,7 +59,7 @@ class TransferManager extends ChangeNotifier {
       totalBytes: totalBytes,
     );
     _tasks.insert(0, task);
-    notifyListeners();
+    _safeNotifyListeners();
     _runNext(ssh);
     return task.id;
   }
@@ -67,12 +71,12 @@ class TransferManager extends ChangeNotifier {
 
   void remove(String id) {
     _tasks.removeWhere((t) => t.id == id && !t.isActive);
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   void clearFinished() {
     _tasks.removeWhere((t) => !t.isActive);
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   Future<void> _runNext(SshService ssh) async {
@@ -92,7 +96,7 @@ class TransferManager extends ChangeNotifier {
 
     _running++;
     next.status = TransferStatus.running;
-    notifyListeners();
+    _safeNotifyListeners();
 
     try {
       int lastNotify = 0;
@@ -101,7 +105,7 @@ class TransferManager extends ChangeNotifier {
         final now = DateTime.now().millisecondsSinceEpoch;
         if (now - lastNotify > 100 || transferred == next.totalBytes) {
           lastNotify = now;
-          notifyListeners();
+          _safeNotifyListeners();
         }
       }
 
@@ -130,7 +134,7 @@ class TransferManager extends ChangeNotifier {
       next.error = '$e';
     } finally {
       _running--;
-      notifyListeners();
+      _safeNotifyListeners();
       _runNext(ssh);
     }
   }

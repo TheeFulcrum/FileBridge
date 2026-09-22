@@ -109,15 +109,19 @@ class FilesTabState extends State<FilesTab> with AutomaticKeepAliveClientMixin<F
       );
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
         SnackBar(
           content: const Text('Upload queued'),
-          action: widget.onViewTransfers != null
-              ? SnackBarAction(
-                  label: 'View',
-                  onPressed: widget.onViewTransfers!,
-                )
-              : null,
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'View',
+            onPressed: () {
+              messenger.hideCurrentSnackBar();
+              widget.onViewTransfers?.call();
+            },
+          ),
         ),
       );
     }
@@ -152,15 +156,19 @@ class FilesTabState extends State<FilesTab> with AutomaticKeepAliveClientMixin<F
         totalBytes: entry.size ?? 0,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
           SnackBar(
             content: Text('Downloading ${entry.name}'),
-            action: widget.onViewTransfers != null
-                ? SnackBarAction(
-                    label: 'View',
-                    onPressed: widget.onViewTransfers!,
-                  )
-                : null,
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'View',
+              onPressed: () {
+                messenger.hideCurrentSnackBar();
+                widget.onViewTransfers?.call();
+              },
+            ),
           ),
         );
       }

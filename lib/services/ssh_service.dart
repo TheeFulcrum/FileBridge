@@ -124,6 +124,9 @@ class SshService {
     required void Function(void Function() cancel) onCancelBound,
   }) async {
     final localFile = File(localPath);
+    if (!await localFile.exists()) {
+      throw FileSystemException('Local file does not exist', localPath);
+    }
     final length = await localFile.length();
     final remote = await _requireSftp.open(
       remotePath,
@@ -140,7 +143,9 @@ class SshService {
       await writer.done;
       if (length == 0) onProgress(0);
     } finally {
-      await remote.close();
+      try {
+        await remote.close();
+      } catch (_) {}
     }
   }
 
@@ -154,7 +159,10 @@ class SshService {
   }) async {
     final remote = await _requireSftp.open(remotePath);
     final localFile = File(localPath);
+    await localFile.parent.create(recursive: true);
     final sink = localFile.openWrite();
+    sink.done.catchError((_) {});
+
     StreamSubscription<Uint8List>? sub;
     final completer = Completer<void>();
     var cancelled = false;
@@ -167,13 +175,12 @@ class SshService {
             if (!completer.isCompleted) completer.completeError(e, st);
           }
         },
-        onDone: () async {
-          try {
-            await sink.flush();
+        onDone: () {
+          sink.flush().then((_) {
             if (!completer.isCompleted) completer.complete();
-          } catch (e, st) {
+          }).catchError((Object e, StackTrace st) {
             if (!completer.isCompleted) completer.completeError(e, st);
-          }
+          });
         },
         onError: (Object e, StackTrace st) {
           if (!completer.isCompleted) completer.completeError(e, st);
