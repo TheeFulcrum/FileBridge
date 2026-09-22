@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../models/connection_profile.dart';
+import '../models/transfer_task.dart';
 import '../services/ssh_service.dart';
 import '../services/transfer_manager.dart';
+import '../utils/formatters.dart';
 import 'files_tab.dart';
 import 'transfers_tab.dart';
 
@@ -19,6 +21,7 @@ class SessionScreen extends StatefulWidget {
 class _SessionScreenState extends State<SessionScreen> with SingleTickerProviderStateMixin {
   final _ssh = SshService();
   final _transferManager = TransferManager();
+  final _filesTabKey = GlobalKey<FilesTabState>();
   _ConnectStage _stage = _ConnectStage.connecting;
   String? _errorMessage;
   late TabController _tabController;
@@ -28,6 +31,39 @@ class _SessionScreenState extends State<SessionScreen> with SingleTickerProvider
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _connect();
+  }
+
+  bool _handleBackNavigation() {
+    if (_tabController.index != 0) {
+      _tabController.animateTo(0);
+      return true;
+    }
+    if (_filesTabKey.currentState?.canGoBack == true) {
+      _filesTabKey.currentState?.goBack();
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> _showDisconnectConfirmation() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Disconnect?'),
+        content: Text('Are you sure you want to disconnect from "${widget.profile.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Stay connected'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Disconnect'),
+          ),
+        ],
+      ),
+    );
+    return confirm ?? false;
   }
 
   Future<void> _connect({bool trustNewKey = false}) async {
@@ -60,38 +96,79 @@ class _SessionScreenState extends State<SessionScreen> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
+    final nav = Navigator.of(context);
     return AnimatedBuilder(
       animation: _transferManager,
-      builder: (context, _) => Scaffold(
-        appBar: AppBar(
-          title: Text(widget.profile.name),
-          bottom: _stage == _ConnectStage.connected
-              ? TabBar(
-                  controller: _tabController,
-                  tabs: [
-                    const Tab(icon: Icon(Icons.folder_open), text: 'Files'),
-                    Tab(
-                      icon: const Icon(Icons.swap_vert),
-                      text: _transferManager.activeCount > 0
-                          ? 'Transfers (${_transferManager.activeCount})'
-                          : 'Transfers',
-                    ),
-                  ],
-                )
-              : null,
-          actions: [
-            if (_stage == _ConnectStage.connected)
-              IconButton(
-                icon: const Icon(Icons.logout),
-                tooltip: 'Disconnect',
-                onPressed: () {
-                  _ssh.disconnect();
-                  Navigator.of(context).pop();
-                },
-              ),
-          ],
+      builder: (context, _) => PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          final handled = _handleBackNavigation();
+          if (!handled) {
+            final confirm = await _showDisconnectConfirmation();
+            if (confirm && mounted) {
+              _ssh.disconnect();
+              nav.pop();
+            }
+          }
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              tooltip: 'Back',
+              onPressed: () async {
+                final handled = _handleBackNavigation();
+                if (!handled) {
+                  final confirm = await _showDisconnectConfirmation();
+                  if (confirm && mounted) {
+                    _ssh.disconnect();
+                    nav.pop();
+                  }
+                }
+              },
+            ),
+            title: Text(widget.profile.name),
+            bottom: _stage == _ConnectStage.connected
+                ? TabBar(
+                    controller: _tabController,
+                    tabs: [
+                      const Tab(icon: Icon(Icons.folder_open), text: 'Files'),
+                      Tab(
+                        icon: const Icon(Icons.swap_vert),
+                        text: _transferManager.activeCount > 0
+                            ? 'Transfers (${_transferManager.activeCount})'
+                            : 'Transfers',
+                      ),
+                    ],
+                  )
+                : null,
+            actions: [
+              if (_stage == _ConnectStage.connected)
+                IconButton(
+                  icon: const Icon(Icons.logout),
+                  tooltip: 'Disconnect',
+                  onPressed: () async {
+                    final confirm = await _showDisconnectConfirmation();
+                    if (confirm && mounted) {
+                      _ssh.disconnect();
+                      nav.pop();
+                    }
+                  },
+                ),
+            ],
+          ),
+          body: Column(
+            children: [
+              Expanded(child: _buildBody()),
+              if (_stage == _ConnectStage.connected)
+                _ActiveTransferBanner(
+                  transferManager: _transferManager,
+                  onViewTransfers: () => _tabController.animateTo(1),
+                ),
+            ],
+          ),
         ),
-        body: _buildBody(),
       ),
     );
   }
@@ -115,11 +192,115 @@ class _SessionScreenState extends State<SessionScreen> with SingleTickerProvider
         return TabBarView(
           controller: _tabController,
           children: [
-            FilesTab(ssh: _ssh, profile: widget.profile, transferManager: _transferManager),
+            FilesTab(
+              key: _filesTabKey,
+              ssh: _ssh,
+              profile: widget.profile,
+              transferManager: _transferManager,
+              onViewTransfers: () => _tabController.animateTo(1),
+            ),
             TransfersTab(transferManager: _transferManager),
           ],
         );
     }
+  }
+}
+
+class _ActiveTransferBanner extends StatelessWidget {
+  final TransferManager transferManager;
+  final VoidCallback onViewTransfers;
+
+  const _ActiveTransferBanner({
+    required this.transferManager,
+    required this.onViewTransfers,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final activeTasks = transferManager.tasks.where((t) => t.isActive).toList();
+    if (activeTasks.isEmpty) return const SizedBox.shrink();
+
+    final task = activeTasks.first;
+    final isUpload = task.direction == TransferDirection.upload;
+    final percentNum = (task.progress * 100).clamp(0, 100);
+    final percentStr = percentNum.toStringAsFixed(0);
+    final activeCount = activeTasks.length;
+    final countSuffix = activeCount > 1 ? ' ($activeCount active)' : '';
+
+    final theme = Theme.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(30),
+            blurRadius: 6,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isUpload ? Icons.upload : Icons.download,
+                color: theme.colorScheme.onPrimaryContainer,
+                size: 22,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${isUpload ? 'Uploading' : 'Downloading'} ${task.fileName}$countSuffix',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: theme.colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${formatBytes(task.transferredBytes)} / ${formatBytes(task.totalBytes)} ($percentStr%)',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: theme.colorScheme.onPrimaryContainer.withAlpha(216),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.tonal(
+                onPressed: onViewTransfers,
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                child: const Text('View Queue'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: task.status == TransferStatus.queued ? null : task.progress,
+              minHeight: 4,
+              backgroundColor: theme.colorScheme.onPrimaryContainer.withAlpha(50),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                theme.colorScheme.onPrimaryContainer,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

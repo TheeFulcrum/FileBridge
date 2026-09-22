@@ -14,20 +14,26 @@ class FilesTab extends StatefulWidget {
   final SshService ssh;
   final ConnectionProfile profile;
   final TransferManager transferManager;
+  final VoidCallback? onViewTransfers;
 
   const FilesTab({
     super.key,
     required this.ssh,
     required this.profile,
     required this.transferManager,
+    this.onViewTransfers,
   });
 
   @override
-  State<FilesTab> createState() => _FilesTabState();
+  State<FilesTab> createState() => FilesTabState();
 }
 
-class _FilesTabState extends State<FilesTab> {
+class FilesTabState extends State<FilesTab> with AutomaticKeepAliveClientMixin<FilesTab> {
+  @override
+  bool get wantKeepAlive => true;
+
   late String _currentPath;
+  final List<String> _pathHistory = [];
   Future<List<RemoteEntry>>? _future;
 
   @override
@@ -35,6 +41,24 @@ class _FilesTabState extends State<FilesTab> {
     super.initState();
     _currentPath = widget.profile.remotePath;
     _refresh();
+  }
+
+  bool get canGoBack =>
+      _pathHistory.isNotEmpty || (_currentPath != '/' && _currentPath != '.');
+
+  bool goBack() {
+    if (_pathHistory.isNotEmpty) {
+      setState(() {
+        _currentPath = _pathHistory.removeLast();
+        _future = widget.ssh.listDirectory(_currentPath);
+      });
+      return true;
+    }
+    if (_currentPath != '/' && _currentPath != '.') {
+      _goUp();
+      return true;
+    }
+    return false;
   }
 
   void _refresh() {
@@ -45,6 +69,7 @@ class _FilesTabState extends State<FilesTab> {
 
   void _open(RemoteEntry entry) {
     if (!entry.isDirectory) return _showFileActions(entry);
+    _pathHistory.add(_currentPath);
     setState(() {
       _currentPath = entry.path;
       _future = widget.ssh.listDirectory(_currentPath);
@@ -52,6 +77,13 @@ class _FilesTabState extends State<FilesTab> {
   }
 
   void _goUp() {
+    if (_pathHistory.isNotEmpty) {
+      setState(() {
+        _currentPath = _pathHistory.removeLast();
+        _future = widget.ssh.listDirectory(_currentPath);
+      });
+      return;
+    }
     if (_currentPath == '/' || _currentPath == '.') return;
     final parts = _currentPath.split('/')..removeLast();
     final parent = parts.isEmpty || parts.join('/').isEmpty ? '/' : parts.join('/');
@@ -78,7 +110,15 @@ class _FilesTabState extends State<FilesTab> {
     }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Upload started — check the Transfers tab')),
+        SnackBar(
+          content: const Text('Upload queued'),
+          action: widget.onViewTransfers != null
+              ? SnackBarAction(
+                  label: 'View',
+                  onPressed: widget.onViewTransfers!,
+                )
+              : null,
+        ),
       );
     }
   }
@@ -113,7 +153,15 @@ class _FilesTabState extends State<FilesTab> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Downloading ${entry.name} to ${downloads.path}')),
+          SnackBar(
+            content: Text('Downloading ${entry.name}'),
+            action: widget.onViewTransfers != null
+                ? SnackBarAction(
+                    label: 'View',
+                    onPressed: widget.onViewTransfers!,
+                  )
+                : null,
+          ),
         );
       }
     } catch (e) {
@@ -242,6 +290,7 @@ class _FilesTabState extends State<FilesTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Scaffold(
       body: Column(
         children: [
@@ -254,7 +303,7 @@ class _FilesTabState extends State<FilesTab> {
                   IconButton(
                     icon: const Icon(Icons.arrow_upward),
                     tooltip: 'Up',
-                    onPressed: _currentPath == '/' ? null : _goUp,
+                    onPressed: canGoBack ? _goUp : null,
                   ),
                   Expanded(
                     child: Text(
